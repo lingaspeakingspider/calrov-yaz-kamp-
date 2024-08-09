@@ -4,7 +4,6 @@ import logging
 import keyboard
 from pymavlink import mavutil
 
-# Logging ayarları
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
 # MAVLink bağlantısı
@@ -56,7 +55,6 @@ def send_servo_command(servo_number, pwm_value):
         0, 0, 0, 0, 0)
     logging.info(f"Servo command sent: servo={servo_number}, pwm={pwm_value}")
 
-# Klavye modu dinleyicisi
 def keyboard_listener():
     while True:
         if keyboard.is_pressed('w'):
