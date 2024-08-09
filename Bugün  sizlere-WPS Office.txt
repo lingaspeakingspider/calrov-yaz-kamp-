@@ -1,0 +1,484 @@
+﻿Bugün  sizlere bir arayüz ile ilgili
+dökümantasyon sunacağım. Burada ; ayrıca, oluşabilecek hatalar ve bunların nasıl çözüleceği hakkında bilgiler vereceğim.
+()
+
+### 1. Giriş ve Gereksinimler
+
+Bu projenin amacı, MAVLink protokolü kullanarak bir otonom sistemle (örneğin, bir deniz aracı yada bir drone) UDP üzerinden iletişim kurmak ve klavyeden verilen komutlarla bu sistemi kontrol etmektir. Bu süreçte, MAVProxy'yi kullanarak bağlantıyı yöneteceğiz ve pymavlink kütüphanesi ile komutları göndereceğiz.
+
+**Gereken yazılımlar:**
+- Python 3.6+ (Python 3.8 veya üzeri tavsiye edilir)
+- MAVProxy (Zemin istasyonu yazılımı)
+- pymavlink kütüphanesi (MAVLink komutlarını göndermek için)
+- keyboard kütüphanesi (Klavyeden giriş almak için)
+
+### 2. Gerekli Kütüphanelerin Kurulumu
+
+Öncelikle, gerekli Python kütüphanelerini kurmanız gerekiyor:
+Cmd kullanrak bu ve bundan sonraki kütüphaneleri kullanabilirsiniz
+!!DİKKAT Linux yada windows arasında farklar olabilir onlara göre ilerleyin lütfen 
+
+```bash
+pip install pymavlink
+pip install mavproxy
+pip install keyboard
+```
+
+### 3. MAVProxy ile MAVLink Bağlantısı Kurma
+
+MAVProxy'yi başlatmak ve localhost üzerinden MAVLink bağlantısını kurmak için şu komutu kullanın:
+
+```bash
+mavproxy.py --master=udp:127.0.0.1:14550
+```
+
+
+Bu komut, 127.0.0.1 IP adresi üzerinden 14550 portunu kullanarak MAVLink bağlantısını kurar.
+
+Bizim önceki araçlarda kullandığımız ise bir örnek olması amacıyla:
+~~ssh calrov@192.168.1.2
+Password:123
+
+
+
+----4.servo and esc
+Esc: Klavye modundan çıkış.
+Z: Servo motora komut gönderme (MAV_CMD_DO_SET_SERVO komutuyla).
+Ayrıca, her iki işlevi de Python ile nasıl uygulayabileceğimizi, karşılaşılabilecek olası hataları ve bunların nasıl çözüleceğini açıklayacağım.
+bu kodlar şahsım  tarafındanda ilk denemelerden biridir bundan mütevellit ayrıntılı bir açıklama yolu olan 2 kere örnekleyerek açıklamak istedim umarım anlaşılmış olur
+
+Gerekli Kütüphaneler ve Hazırlık
+Bu işlemler için şu kütüphanelere ihtiyaç duyacağız:
+
+tkinter: GUI oluşturmak için kullanacağız.
+pymavlink: MAVLink mesajlarını oluşturmak ve göndermek için kullanacağız.
+keyboard: Klavye olaylarını yakalamak için.
+İlk olarak, gerekli kütüphaneleri yükleyelim:
+
+bash
+pip install pymavlink keyboard
+1. Esc: Klavye Modundan Çıkış
+Bu işlev, kullanıcı Esc tuşuna bastığında GUI'nin belirli bir moddan çıkmasını sağlar. Burada basit bir örnek oluşturacağız.
+
+python
+import tkinter as tk
+import keyboard
+
+# Klavye modunu izleyen ve çıkış sağlayan bir fonksiyon
+def exit_keyboard_mode(event=None):
+    print("Klavye modundan çıkılıyor...")
+    # Klavye modundan çıkma işlemleri burada yapılabilir.
+    # Örneğin, bir GUI modunu kapatma veya bir işlem sonlandırma.
+    root.quit()
+
+# GUI penceresi oluştur
+root = tk.Tk()
+root.title("Servo Motor Kontrol")
+
+# ESC tuşuna basıldığında çıkış fonksiyonunu çağır
+keyboard.add_hotkey('esc', exit_keyboard_mode)
+
+# Ana döngüyü başlat
+root.mainloop()
+Olası Hatalar ve Çözümleri
+Hata: keyboard modülü PermissionError veya OSError hatası veriyorsa, programı yönetici olarak çalıştırmanız gerekebilir. Bu modül, klavye olaylarını yakalamak için sistem düzeyinde izin gerektirir.
+Çözüm: Python programını yönetici olarak çalıştırın veya keyboard modülünün doğru şekilde yüklendiğinden emin olun.
+2. Z: Servo Motora Komut Gönderme (MAV_CMD_DO_SET_SERVO)
+Bu işlev, bir Z tuşuna basıldığında servo motora belirli bir komut göndermeyi sağlar. MAVLink protokolünü kullanacağız. MAV_CMD_DO_SET_SERVO komutuyla bir servoya belirli bir PWM sinyali göndereceğiz.
+
+python
+import tkinter as tk
+from pymavlink import mavutil
+
+# MAVLink bağlantısı başlat
+def connect_mavlink():
+    # ArduPilot veya PX4 tabanlı bir drone simülatörüne veya gerçek donanıma bağlanın.
+    # Örneğin: 127.0.0.1:14550 (simülatör) veya /dev/ttyUSB0 (gerçek cihaz)
+    connection = mavutil.mavlink_connection('udp:127.0.0.1:14550')
+    connection.wait_heartbeat()
+    print("MAVLink bağlantısı kuruldu.")
+    return connection
+
+# Servo komutu gönder
+def send_servo_command(connection, servo_number, pwm_value):
+    print(f"Servo {servo_number} için PWM değeri {pwm_value} gönderiliyor...")
+    connection.mav.command_long_send(
+        connection.target_system,         # Hedef sistem
+        connection.target_component,      # Hedef bileşen
+        mavutil.mavlink.MAV_CMD_DO_SET_SERVO, # Komut
+        0,                                # Confirmation
+        servo_number,                     # Servo numarası
+        pwm_value,                        # PWM değeri
+        0, 0, 0, 0, 0                     # Diğer parametreler kullanılmıyor
+    )
+    print("Servo komutu gönderildi.")
+
+# Servo komutu Z tuşuna basıldığında gönderilecek
+def send_servo_on_keypress(event=None):
+    connection = connect_mavlink()
+    send_servo_command(connection, 9, 1500)  # 9 numaralı servoya 1500 PWM gönder
+
+# GUI penceresi oluştur
+root = tk.Tk()
+root.title("Servo Motor Kontrol")
+
+# Z tuşuna basıldığında servo komutu gönder
+keyboard.add_hotkey('z', send_servo_on_keypress)
+
+# Ana döngüyü başlat
+root.mainloop()
+Olası Hatalar ve Çözümleri
+Bağlantı Hatası: MAVLink bağlantısı kurulamıyorsa, bağlantı adresi veya portu yanlış olabilir.
+Çözüm: Bağlantı adresini (udp:127.0.0.1:14550 gibi) ve bağlantı türünü (UDP, seri port) doğru yapılandırdığınızdan emin olun.
+Komut Hatası: Servo komutu gönderilemiyorsa, target_system ve target_component doğru şekilde ayarlanmamış olabilir.
+Çözüm: MAVLink bağlantısının wait_heartbeat() fonksiyonunu başarıyla tamamladığından ve target_system ve target_component değişkenlerinin doğru değerleri içerdiğinden emin olun.
+Sonuç
+Yukarıda verilen Python kodlarıyla, klavyeden Esc tuşuna basıldığında GUI'nin kapanmasını ve Z tuşuna basıldığında ise bir servo motoruna MAVLink üzerinden komut gönderilmesini sağlayabilirsiniz. Her iki işlem için de karşılaşılabilecek olası hataları ve çözümlerini belirttim.
+
+Bu yapıyı geliştirmek ve test etmek için MAVLink uyumlu bir simülatör veya gerçek bir uçuşv (qground) kontrol donanımı kullanabilirsiniz. Programı yönetici olarak çalıştırmak ve gerekli bağlantı ayarlarını doğru yapılandırmak, işlemlerin başarılı olmasını sağlayacaktır.
+ aşağıda iki kodun ayrıntılı açıklamalarını bulabilirsiniz:
+
+1. Klavye Modundan Çıkış (Esc Tuşu)
+Kod:
+python
+import tkinter as tk
+import keyboard
+
+# Klavye modunu izleyen ve çıkış sağlayan bir fonksiyon
+def exit_keyboard_mode(event=None):
+    print("Klavye modundan çıkılıyor...")
+    # Klavye modundan çıkma işlemleri burada yapılabilir.
+    # Örneğin, bir GUI modunu kapatma veya bir işlem sonlandırma.
+    root.quit()
+
+# GUI penceresi oluştur
+root = tk.Tk()
+root.title("Servo Motor Kontrol")
+
+# ESC tuşuna basıldığında çıkış fonksiyonunu çağır
+keyboard.add_hotkey('esc', exit_keyboard_mode)
+
+# Ana döngüyü başlat
+root.mainloop()
+Açıklamalar:
+tkinter Kütüphanesi:
+
+Python'da yerleşik bir grafiksel kullanıcı arayüzü (GUI) kütüphanesidir. GUI pencereleri, düğmeleri, metin kutuları gibi arayüz öğelerini oluşturmak için kullanılır.
+root = tk.Tk() komutuyla bir ana pencere oluşturulur.
+keyboard Kütüphanesi:
+
+Klavye olaylarını yakalamak için kullanılır. keyboard.add_hotkey('esc', exit_keyboard_mode) ifadesi ile Esc tuşuna basıldığında exit_keyboard_mode fonksiyonu tetiklenir.
+keyboard kütüphanesi, klavyeden gelen girişleri izlemenizi sağlar. Bu kütüphane, klavye kısayollarını dinlemek ve onlara tepki vermek için kullanılır.
+exit_keyboard_mode Fonksiyonu:
+
+Bu fonksiyon, Esc tuşuna basıldığında çalıştırılır. root.quit() komutuyla tkinter ana döngüsü sonlandırılır ve GUI kapanır.
+event=None parametresi, bu fonksiyonun bir klavye olayıyla çağrılabileceğini belirtir.
+root.mainloop():
+
+Bu komut, GUI'nin çalışmasını başlatır ve sürekli olarak kullanıcı girişlerini bekler.
+Tkinter ana döngüsünü başlatır ve bu döngü, GUI'yi canlı tutar. Kullanıcı, GUI penceresiyle etkileşime geçtiği sürece bu döngü çalışmaya devam eder.
+Olası Hatalar:
+Keyboard Modülü Çalışmıyor:
+
+keyboard modülü, bazı sistemlerde izin sorunlarına yol açabilir. Özellikle PermissionError veya OSError alıyorsanız, Python programını yönetici olarak çalıştırmayı deneyin.
+ESC Tuşu Tetiklenmiyor:
+
+Eğer esc tuşu çalışmıyorsa, kütüphanenin yüklenip yüklenmediğini kontrol edin ve doğru klavye düzenini (layout) kullandığınızdan emin olun.
+2. Servo Motora Komut Gönderme (Z Tuşu ile MAV_CMD_DO_SET_SERVO)
+Kod:
+python
+import tkinter as tk
+from pymavlink import mavutil
+
+# MAVLink bağlantısı başlat
+def connect_mavlink():
+    # ArduPilot veya PX4 tabanlı bir drone simülatörüne veya gerçek donanıma bağlanın.
+    # Örneğin: 127.0.0.1:14550 (simülatör) veya /dev/ttyUSB0 (gerçek cihaz)
+    connection = mavutil.mavlink_connection('udp:127.0.0.1:14550')
+    connection.wait_heartbeat()
+    print("MAVLink bağlantısı kuruldu.")
+    return connection
+
+# Servo komutu gönder
+def send_servo_command(connection, servo_number, pwm_value):
+    print(f"Servo {servo_number} için PWM değeri {pwm_value} gönderiliyor...")
+    connection.mav.command_long_send(
+        connection.target_system,         # Hedef sistem
+        connection.target_component,      # Hedef bileşen
+        mavutil.mavlink.MAV_CMD_DO_SET_SERVO, # Komut
+        0,                                # Confirmation
+        servo_number,                     # Servo numarası
+        pwm_value,                        # PWM değeri
+        0, 0, 0, 0, 0                     # Diğer parametreler kullanılmıyor
+    )
+    print("Servo komutu gönderildi.")
+
+# Servo komutu Z tuşuna basıldığında gönderilecek
+def send_servo_on_keypress(event=None):
+    connection = connect_mavlink()
+    send_servo_command(connection, 9, 1500)  # 9 numaralı servoya 1500 PWM gönder
+
+# GUI penceresi oluştur
+root = tk.Tk()
+root.title("Servo Motor Kontrol")
+
+# Z tuşuna basıldığında servo komutu gönder
+keyboard.add_hotkey('z', send_servo_on_keypress)
+
+# Ana döngüyü başlat
+root.mainloop()
+Açıklamalar:
+pymavlink Kütüphanesi:
+
+MAVLink mesajlarını oluşturmak ve göndermek için kullanılır. mavutil.mavlink_connection fonksiyonu, MAVLink ile bir bağlantı kurar.
+Bu kütüphane, özellikle otonom sistemlerde (örneğin, dronlar) komut gönderme, telemetri verilerini alma gibi işlevleri gerçekleştirmek için kullanılır.
+connect_mavlink Fonksiyonu:
+
+Bu fonksiyon, MAVLink protokolü üzerinden bir bağlantı kurar. Örneğin, bir drone simülatörüne (genellikle 127.0.0.1:14550 gibi bir IP adresi ve port) 
+veya bir gerçek uçuş kontrol donanımına bağlanabilirsiniz.
+connection.wait_heartbeat() komutu, bağlantı kurulduğunda cihazın heartbeat (kalp atışı) mesajını bekler. Bu, bağlantının başarıyla kurulduğunu doğrular.
+send_servo_command Fonksiyonu:
+
+send_servo_command fonksiyonu, belirli bir servo motoruna belirli bir PWM değeri göndermek için MAV_CMD_DO_SET_SERVO komutunu kullanır.
+connection.mav.command_long_send fonksiyonu, uzun bir komut gönderir. Bu komut, servonun PWM sinyalini ayarlamak için kullanılır.
+servo_number ve pwm_value parametreleri ile hangi servoya ve hangi PWM değerinin gönderileceği belirlenir.
+send_servo_on_keypress Fonksiyonu:
+
+Bu fonksiyon, Z tuşuna basıldığında çalışır. Öncelikle MAVLink bağlantısını kurar, ardından servo komutunu gönderir.
+Örnekte, 9 numaralı servoya 1500 PWM değeri gönderilmektedir.
+Z Tuşuyla Servo Kontrolü:
+
+keyboard.add_hotkey('z', send_servo_on_keypress) ifadesi, Z tuşuna basıldığında send_servo_on_keypress fonksiyonunu çalıştırır.
+GUI ve Tkinter Mainloop:
+
+Tkinter ile oluşturulan GUI, root.mainloop() komutuyla sürekli olarak kullanıcı etkileşimlerini izler. Bu sayede, kullanıcı Z tuşuna bastığında servo komutunu gönderebilir.
+Olası Hatalar:
+MAVLink Bağlantı Sorunları:
+
+MAVLink bağlantısı kurulamazsa (örneğin, 127.0.0.1:14550 adresine bağlanılamıyorsa), cihaz bağlantısını kontrol edin.
+wait_heartbeat() başarılı olmazsa, cihazın aktif olduğundan ve heartbeat mesajlarını gönderdiğinden emin olun.
+Servo Komut Gönderilemiyor:
+
+command_long_send başarısız olursa, target_system ve target_component parametrelerinin doğru olup olmadığını kontrol edin. Bunlar, MAVLink bağlantısı kurulduğunda cihaz tarafından belirlenir.
+Özet:
+Klavyeden Giriş: keyboard kütüphanesi, klavye olaylarını yakalayıp, belirli tuşlara basıldığında fonksiyonların çalışmasını sağlar.
+
+
+
+
+### 5. Python ile MAVLink Bağlantısı Kurma ve Heartbeat Mesajını Bekleme
+
+MAVLink bağlantısını kurmak için pymavlink kütüphanesini kullanacağız. İlk adım olarak, mavutil modülünü kullanarak MAVLink bağlantısını oluşturun ve `wait_heartbeat()` fonksiyonu ile bağlantının başarıyla kurulduğunu kontrol edin:
+
+```python
+from pymavlink import mavutil
+
+# MAVLink bağlantısını kur
+master = mavutil.mavlink_connection('udp:127.0.0.1:14550')
+
+# Heartbeat mesajı bekle (bu mesaj bağlantının kurulduğunu gösterir)
+master.wait_heartbeat()
+print("Heartbeat received")
+```
+
+### 5. Heartbeat Mesajlarının Alınması ve Dosyaya Yazılması
+
+Gelen heartbeat mesajlarını almak ve bir dosyaya kaydetmek için threading kullanacağız. Bu, mesajları sürekli alıp dosyaya yazmamızı sağlar.
+
+```python
+import threading
+import time
+import logging
+
+# Logging ayarları
+logging.basicConfig(filename='mavlink_messages.log', level=logging.INFO)
+
+def log_heartbeat():
+    while True:
+        try:
+            # HEARTBEAT mesajını al
+            msg = master.recv_match(type='HEARTBEAT', blocking=True)
+            if msg:
+                # Mesajı sözlük formatında dosyaya yazdır
+                logging.info(msg.to_dict())
+                time.sleep(1)
+        except Exception as e:
+            logging.error(f"Error receiving heartbeat: {e}")
+            break
+
+# Heartbeat logging işlemini ayrı bir thread'de başlat
+heartbeat_thread = threading.Thread(target=log_heartbeat)
+heartbeat_thread.start()
+```
+
+Bu kod, heartbeat mesajlarını sonsuz bir döngüde alır ve `mavlink_messages.log` dosyasına yazar. Herhangi bir hata oluşursa, hata mesajı logging kütüphanesi ile kaydedilir.
+
+### 6. Klavye Kontrol Modunun Oluşturulması
+
+**WASD Tuşları ve Gain Değeri:**
+
+
+WASD tuşlarını kullanarak hareket komutlarını göndereceğiz. Bu tuşlar için bir "gain" değeri tanımlayacağız. Gain, hareket komutlarının hassasiyetini kontrol etmenizi sağlar.
+buradada size iki örnek sunacağım birincisinde tüm açıklamalar verilmektedir ikincisi kod tabanlıdır
+```python
+import keyboard
+
+# Hareket komutları için başlangıç gain değeri
+gain = 500
+
+def send_movement_command(x, y, z, yaw):
+    # Hareket komutu gönderme
+    master.mav.manual_control_send(
+        master.target_system,
+        x * gain,  # X ekseni
+        y * gain,  # Y ekseni
+        z * gain,  # Z ekseni (irigatörde yoksa 0 olarak bırakılabilir)
+        yaw * gain,  # Yaw ekseni
+        0  # Buton parametresi (gerekirse kullanılabilir)
+    )
+    logging.info(f"Movement command - x:{x*gain}, y:{y*gain}, z:{z*gain}, yaw:{yaw*gain}")
+
+def keyboard_control():
+    while True:
+        if keyboard.is_pressed('w'):
+            send_movement_command(1, 0, 0, 0)
+        elif keyboard.is_pressed('s'):
+            send_movement_command(-1, 0, 0, 0)
+        elif keyboard.is_pressed('a'):
+            send_movement_command(0, -1, 0, 0)
+        elif keyboard.is_pressed('d'):
+            send_movement_command(0, 1, 0, 0)
+        elif keyboard.is_pressed('up'):
+            send_movement_command(0, 0, 1, 0)
+        elif keyboard.is_pressed('down'):
+            send_movement_command(0, 0, -1, 0)
+        elif keyboard.is_pressed('left'):
+            send_movement_command(0, 0, 0, -1)
+        elif keyboard.is_pressed('right'):
+            send_movement_command(0, 0, 0, 1)
+        elif keyboard.is_pressed('esc'):
+            logging.info("Exiting keyboard control")
+            break
+        elif keyboard.is_pressed('z'):
+            master.mav.command_long_send(
+                master.target_system,
+                master.target_component,
+                mavutil.mavlink.MAV_CMD_DO_SET_SERVO,
+                0,  # Confirmation
+                8,  # Servo number
+                1000,  # PWM value
+                0, 0, 0, 0, 0
+            )
+            logging.info("Servo command sent")
+        
+        time.sleep(0.1)  # Küçük bir gecikme ekleyerek CPU yükünü azaltın
+
+keyboard_control_thread = threading.Thread(target=keyboard_control)
+keyboard_control_thread.start()
+```
+class NonBlockingKeyListener:
+    def __init__(self):
+        self.pressed_keys = []
+        self._stop_event = threading.Event()
+        self._listener_thread = None
+
+    def on_press(self, key):
+        try:
+            if key == keyboard.Key.up or key == keyboard.Key.down or key == keyboard.Key.left or key == keyboard.Key.right:
+                self.pressed_keys.append(key)
+
+            self.pressed_keys.append(key.char)
+
+        except AttributeError:
+            pass
+
+    def on_release(self, key):
+        if key == keyboard.Key.esc:
+            self._stop_event.set()
+            return False
+
+    def start_listener(self):
+        with keyboard.Listener(on_press=self.on_press, on_release=self.on_release) as listener:
+            listener.join()
+
+    def run_listener_thread(self):
+        self._listener_thread = threading.Thread(target=self.start_listener)
+        self._listener_thread.start()
+
+    def stop_listener(self):
+        if self._listener_thread and self._listener_thread.is_alive():
+            self._stop_event.set()
+            self._listener_thread.join()
+
+    def run(self):
+        global keyboard_pwms
+        self.run_listener_thread()
+
+        try:
+            while not self._stop_event.is_set():
+                self.x_value = 0
+                self.y_value = 0
+                self.z_value = 500
+                self.yaw_value = 0
+
+                gain_value = 100
+
+                if len(self.pressed_keys) == 0:
+                    self.x_value = 0
+                    self.y_value = 0
+                    self.z_value = 500
+                    self.yaw_value = 0
+
+                if self.pressed_keys:
+                    button = self.pressed_keys.pop(0)
+                    
+                    if button == 'w':
+                        self.x_value = gain_value * 10
+
+                    if button == 's':
+                        self.x_value = gain_value * -10
+
+                    if button == 'a':
+                        self.y_value = gain_value * -10
+
+                    if button == 'd':
+                        self.y_value = gain_value * 10
+
+                    if button == keyboard.Key.up:
+                        self.z_value = (gain_value * 5) + 500
+
+                    if button == keyboard.Key.down:
+                        self.z_value = (gain_value * -5) + 500
+
+                    if button == keyboard.Key.left:
+                        self.yaw_value = gain_value * -10
+
+                    if button == keyboard.Key.right:
+                        self.yaw_value = gain_value * 10
+
+                    keyboard_pwms.append([self.x_value, self.y_value, self.z_value, self.yaw_value])
+                time.sleep(0.01)
+
+        except KeyboardInterrupt:
+            self._stop_event.set()
+            self.stop_listener()
+,,,
+**Fonksiyonlar:**
+- `send_movement_command(x, y, z, yaw)`: Bu fonksiyon, x, y, z ve yaw eksenlerinde hareket komutlarını göndermek için kullanılır. Gain değeri, her eksene uygulanarak hassasiyet ayarı yapılır.
+- `keyboard_control()`: Klavyeden gelen girişleri dinler ve ilgili fonksiyonları çalıştırır.
+
+**Logging ile Takip:** 
+
+Hareket komutlarının ne olduğunu ve ne zaman gönderildiğini log dosyasına kaydediyoruz. Bu, olası hataların ve yapılan işlemlerin izlenmesini sağlar.
+
+### 7. Arm, Disarm ve Mod Değiştirme Komutları
+
+Arm, disarm ve mod değiştirme komutları da klavye üzerinden yapılacak. Bu işlemler de logging ile kaydedilecek.
+bu koddaki herşey ardusup pymavlink üzerindeki changing flight mod esaslı bu kısım gerçekten zor ve ifade edilemiyor şahsen bunu yazmaya çalışmamın 6. denemesi 
+
+    def change_mode(self, mode):
+        if self.mavlink_thread.connection != 0:
+            global mode_event
+            if mode_event == 0:
+                self.pwm_send_thread.kill()
+                self.pwm_send_thread_mode = multiprocessing.Process(target = self.send_pwm, a
