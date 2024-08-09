@@ -1,4 +1,4 @@
-﻿Bugün  sizlere bir arayüz ile ilgili
+Bugün  sizlere bir arayüz ile ilgili
 dökümantasyon sunacağım. Burada ; ayrıca, oluşabilecek hatalar ve bunların nasıl çözüleceği hakkında bilgiler vereceğim.
 ()
 
@@ -481,4 +481,275 @@ bu koddaki herşey ardusup pymavlink üzerindeki changing flight mod esaslı bu 
             global mode_event
             if mode_event == 0:
                 self.pwm_send_thread.kill()
-                self.pwm_send_thread_mode = multiprocessing.Process(target = self.send_pwm, a
+                self.pwm_send_thread_mode = multiprocessing.Process(target = self.send_pwm, args=(mode, ))
+                self.pwm_send_thread_mode.start()
+                mode_event += 1
+
+            else:
+                self.pwm_send_thread_mode.kill()
+                self.mode_dict[self.current_mode].setChecked(False)
+                self.mode_dict[self.current_mode].setStyleSheet("")
+
+                self.mode_dict[mode].setStyleSheet("background: blue")
+                self.current_mode = mode
+                self.pwm_send_thread_mode = multiprocessing.Process(target = self.send_pwm, args=(mode, ))
+                self.pwm_send_thread_mode.start()
+
+    def arm_button_pressed(self):
+        if self.mavlink_thread.connection != 0:    
+            self.mavlink_thread.connection.arducopter_arm()
+            self.arm_button.setStyleSheet("background-color: green;")
+
+    def disarm_button_pressed(self):
+        if self.mavlink_thread.connection != 0:    
+            self.mavlink_thread.connection.arducopter_disarm()
+            self.arm_button.setStyleSheet("")
+
+    def manual_button_pressed(self):
+        self.change_mode('MANUAL')
+
+    def depth_hold_button_pressed(self):
+        self.change_mode('ALT_HOLD')
+
+    def stabilize_button_pressed(self):
+        self.change_mode('STABILIZE')
+
+    def send_pwm(self, mode:str):
+        global current_depth_list, target_depth_list, keyboard_pwms
+        """
+        Modes:
+            - MANUAL
+            - ALT_HOLD
+            - STABILIZE
+        """
+        while True:
+            depth_msg = self.mavlink_thread.connection.recv_match(type = "GLOBAL_POSITION_INT", blocking = True).to_dict()
+            current_depth = depth_msg["relative_alt"]
+            current_depth_list.append(current_depth)
+            
+            if mode == "ALT_HOLD":
+                target_depth_list.append(current_depth)
+
+            if not self.keyboard_button.isChecked():
+                x = y = 0
+                if mode == "STABILIZE":
+                    rpy_msg = self.mavlink_thread.connection.recv_match(type = "ATTITUDE", blocking = True).to_dict()
+                    current_roll = rpy_msg["roll"]
+                    current_pitch = rpy_msg["pitch"]
+                    current_yaw = rpy_msg["yaw"]
+
+                    roll_value = pid_manual.roll_pid(current_roll)
+                    pitch_value = pid_manual.pitch_pid(current_pitch)
+                    yaw_value = pid_manual.yaw_pid(0, current_yaw)
+
+                elif mode == "ALT_HOLD":
+                    rpy_msg = self.mavlink_thread.connection.recv_match(type = "ATTITUDE", blocking = True).to_dict()
+                    current_roll = rpy_msg["roll"]
+                    current_pitch = rpy_msg["pitch"]
+                    current_yaw = rpy_msg["yaw"]
+
+
+                    z_value = pid_manual.z_pid(target_depth_list[-1], current_depth_list[-1])
+                    roll_value = pid_manual.roll_pid(current_roll)
+                    pitch_value = pid_manual.pitch_pid(current_pitch)
+                    yaw_value = pid_manual.yaw_pid(0, current_yaw)
+
+            else: #If keyboard mode is active
+                if mode == "STABILIZE":
+                    rpy_msg = self.mavlink_thread.connection.recv_match(type = "ATTITUDE", blocking = True).to_dict()
+                    current_roll = rpy_msg["roll"]
+                    current_pitch = rpy_msg["pitch"]
+                    current_yaw = rpy_msg["yaw"]
+
+                    roll_value = pid_manual.roll_pid(current_roll)
+                    pitch_value = pid_manual.pitch_pid(current_pitch)
+                    yaw_value = pid_manual.yaw_pid(0, current_yaw)
+
+                    x, y, z, yaw = keyboard_pwms[-1]
+
+                    if z != 500:
+                        z = z_value
+
+                    if yaw != 0:
+                        yaw = yaw_value
+
+                
+                elif mode == "ALT_HOLD":
+                    rpy_msg = self.mavlink_thread.connection.recv_match(type = "ATTITUDE", blocking = True).to_dict()
+                    current_roll = rpy_msg["roll"]
+                    current_pitch = rpy_msg["pitch"]
+                    current_yaw = rpy_msg["yaw"]
+
+
+                    z_value = pid_manual.z_pid(target_depth_list[-1], current_depth_list[-1])
+                    roll_value = pid_manual.roll_pid(current_roll)
+                    pitch_value = pid_manual.pitch_pid(current_pitch)
+                    yaw_value = pid_manual.yaw_pid(0, current_yaw)
+
+                    if z != 500:
+                        z = z_value
+
+                    if yaw != 0:
+                        yaw = yaw_value
+        ... burdaki kodlar umarım açıklayıcı ve yeterlidir
+```
+
+### 8. Olası Hatalar ve Çözümleri
+
+**Bağlantı Hatası:**
+- **Problem:** MAVLink bağlantısı kurulamadığında, `wait_heartbeat()` fonksiyonu sonsuza kadar bekleyebilir.
+- **Çözüm:** Bağlantı hatalarını yakalamak için `try-except` blokları ekleyin ve bu durumda programın otomatik olarak tekrar denemesi için bir mekanizma kurun.
+
+**Mesaj Alınamaması:**
+- **Problem:** Bazı durumlarda mesaj alınamayabilir veya beklenmedik bir mesaj alınabilir.
+- **Çözüm:** `recv_match()` fonksiyonunu kullanırken `type` parametresi ile sadece belirli türde mesajlar alınmasını sağlayın. Ayrıca, bu işlemi `try-except` bloğu içinde yaparak hataları log dosyasına kaydedin ve gerektiğinde programın devam etmesini sağlayın.
+Elbette, devam ediyorum.
+
+**Klavye Girişlerinin Yanıt Vermemesi:**
+- **Problem:** Klavye girişleri, özellikle çok hızlı veya sürekli olarak basıldığında bazen yanıt vermeyebilir.
+- **Çözüm:** `keyboard` kütüphanesinin her bir tuş basımını doğru algılayabilmesi için kodun içinde bir süre bekleme (`time.sleep`) eklemek iyi bir yöntemdir. Bu, hem klavye komutlarının doğru bir şekilde yakalanmasını sağlar hem de CPU yükünü azaltır. Bu süreyi deneyerek (örneğin 0.1 saniye) optimize edebilirsiniz.
+
+```python
+time.sleep(0.1)  # Küçük bir gecikme ekleyerek CPU yükünü azaltın ve klavye girdilerini stabilize edin.
+```
+
+**Mod Değiştirme Hatası:**
+- **Problem:** Uçuş modları arasında geçiş yaparken modların isimleri veya değerleri hatalı olabilir, bu da komutun başarısız olmasına neden olabilir.
+- **Çözüm:** Mod değiştirme komutlarında, `set_mode()` fonksiyonuna doğru uçuş modu isminin veya ID'sinin iletildiğinden emin olun. Ayrıca, bu işlemi `try-except` bloğu içinde tutarak, herhangi bir hata durumunda programın hata mesajını log dosyasına yazdırmasını sağlayabilirsiniz.
+
+**Bağlantı Kopması:**
+- **Problem:** MAVLink bağlantısı aniden koparsa veya cihazla iletişim kesilirse, program hata verebilir veya yanıt vermez hale gelebilir.
+- **Çözüm:** Bağlantı problemlerini tespit etmek ve yeniden bağlantı kurmak için bir izleme mekanizması ekleyebilirsiniz. Örneğin, belirli bir süre boyunca hiçbir `heartbeat` mesajı alınamazsa bağlantıyı yeniden başlatmaya çalışabilirsiniz.
+
+```python
+def monitor_connection():
+    while True:
+        try:
+            master.wait_heartbeat(timeout=5)  # 5 saniye boyunca heartbeat bekleyin
+        except Exception as e:
+            logging.error(f"Connection lost, attempting to reconnect: {e}")
+            try:
+                master = mavutil.mavlink_connection('udp:127.0.0.1:14550')  # Yeniden bağlan
+                master.wait_heartbeat()
+                logging.info("Reconnected to MAVLink")
+            except Exception as reconnection_error:
+                logging.error(f"Reconnection failed: {reconnection_error}")
+                time.sleep(5)  # 5 saniye bekle ve yeniden dene
+```
+
+Bu fonksiyon, bağlantının sürekli izlenmesini sağlar ve kopma durumunda otomatik olarak yeniden bağlanmaya çalışır.
+
+### 9. Kodun Toplanması ve Çalıştırılması
+
+Aşağıda, birçok kodun yazılı olduğu örnek oluşturabilecek ama tüm kodların olmadığı bir kod vardır BU  kod örnek teşkil etmesi sebebiyle vardır itibar etmeyiniz
+
+```python
+from pymavlink import mavutil
+import threading
+import time
+import logging
+import keyboard
+
+# Logging ayarları
+logging.basicConfig(filename='mavlink_messages.log', level=logging.INFO)
+
+# MAVLink bağlantısını kur
+master = mavutil.mavlink_connection('udp:127.0.0.1:14550')
+master.wait_heartbeat()
+logging.info("Heartbeat received")
+
+# Hareket komutları için başlangıç gain değeri
+gain = 500
+
+def send_movement_command(x, y, z, yaw):
+    try:
+        master.mav.manual_control_send(
+            master.target_system,
+            x * gain,  # X ekseni
+            y * gain,  # Y ekseni
+            z * gain,  # Z ekseni
+            yaw * gain,  # Yaw ekseni
+            0  # Buton parametresi
+        )
+        logging.info(f"Movement command - x:{x*gain}, y:{y*gain}, z:{z*gain}, yaw:{yaw*gain}")
+    except Exception as e:
+        logging.error(f"Error sending movement command: {e}")
+
+def arm():
+    try:
+        master.arducopter_arm()
+        logging.info("Armed")
+    except Exception as e:
+        logging.error(f"Error in arming: {e}")
+
+def disarm():
+    try:
+        master.arducopter_disarm()
+        logging.info("Disarmed")
+    except Exception as e:
+        logging.error(f"Error in disarming: {e}")
+
+def set_mode(mode):
+    try:
+        mode_id = master.mode_mapping()[mode]
+        master.set_mode(mode_id)
+        logging.info(f"Mode set to {mode}")
+    except Exception as e:
+        logging.error(f"Error in setting mode {mode}: {e}")
+
+def log_heartbeat():
+    while True:
+        try:
+            msg = master.recv_match(type='HEARTBEAT', blocking=True)
+            if msg:
+                logging.info(msg.to_dict())
+                time.sleep(1)
+        except Exception as e:
+            logging.error(f"Error receiving heartbeat: {e}")
+            break
+
+.
+.....
+.
+.
+.
+.
+.
+.
+.
+.
+.
+# Başlatma
+heartbeat_thread = threading.Thread(target=log_heartbeat)
+heartbeat_thread.start()
+
+keyboard_control_thread = threading.Thread(target=keyboard_control)
+keyboard_control_thread.start()
+```
+
+### 10. Sonuç ve Özet
+
+Bu dökümantasyonda, MAVLink protokolü kullanarak bir drone veya benzeri bir otonom sistemle nasıl iletişim kurabileceğinizi adım adım anlatım. 
+Klavyeden verilen komutlarla hareket komutları gönderdik, Arm/Disarm ve uçuş modlarını değiştirdik. 
+Ayrıca, sistemin heartbeat mesajlarını dosyaya kaydetmesini sağladık. 
+
+**Hata yönetimi** ile ilgili olarak, olası hataların nasıl ele alınacağını ve çözüm yollarını gösterdik.
+Bu, programın daha kararlı çalışmasını sağlar ve sorun oluştuğunda neyin yanlış gittiğini anlamanıza yardımcı olur.
+
+**Önemli İpuçları:**
+- Kodunuzda bolca logging kullanın. Bu, neyin çalışıp neyin çalışmadığını anlamak için çok faydalı olacaktır.
+- Threading ve zamanlamalar (time.sleep) ile girişleri ve işlemleri düzgün bir şekilde yönetin.
+- MAVLink protokolü karmaşık olabilir, bu yüzden hata mesajlarını ve olası sorunları dikkatle takip edilmelidir 
+...
+bu arayüzde dikkat edilmesi gereken noktalar olarak size söyleyeçeğim şeyler şu şekilde:
+1 Tüm kütüphanelerin eksiksiz yüklenmesi kodun her daim yanlış olabileceği inancında olunması 
+gerekli işlemlerin mümkün olduğunca önceden yapılmasıdır buraya kadar geldiğiniz için teşekkürler ,
+UMARIM YARDIMCI OLMUŞTUR
+
+...
+....................................................................................................................................................Akif  Emre Daştan(
+...
+...
+...
+...
+...
