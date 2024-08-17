@@ -1,0 +1,165 @@
+OpenCv Ödevi:
+Bu ödevde bilgisayarımızın kamerasını açarak bu kamera görüntüsünde Yolo4 ü kullanarak yani yapay zeka ile görüntüyü işleyeceğiz bir yandanda hsv renk filtresi uygulayarak işlemimizi bitireceğiz
+
+Open cv indirilmesini basit bişekilde sitesinden yapabilirsin
+yolov4 config dosyasını ve yolov4 weights dosyasını internetten indireceğiz 
+Gstreamerı ise siteden indirip Cmd kullanarak kurmamız gerekiyor 
+CMD adımları
+sudo apt-get install gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good 
+Bu komutlar linux içindir dikkat edelim ayrıca gstreamer içinden kullanılacak farklı şeyler için gene bu şekilde kullanılarak indirilebilir
+
+Öncelikle GStreamer kullanarak önce udpsink ile terminalden kendi bilgisayarımızdan kamera açıcaz
+Gstreamer çeşitli medya araçlarını düzenlemek için kullanılan geniş bir kütüphanedir. Biz GStreamer üzerinden bilgisayar kamerası açıcağız ve bir Udp den video yayını yapacağız 
+
+Bunlar sıfırdan olacak bir kamera için gereklidir daha önce giriş sağlanmışsa kullanılmayabilir:
+
+:v4l2src: Linux tabanlı sistemlerde, bu öğe kamerayı kaynak olarak kullanır*
+video/x-raw,width=340,height=280,framerate=20/1: Çözünürlüğü 340x280 ve kare hızını 20 FPS olarak ayarlar vb şekilde ayarlabilirsiniz
+
+videoconvert: Videoyu farklı formatlara dönüştürmek için kullanılır ((bunu pek kullanmasakta ihtiyaç olabilir))*
+
+udpsink: Video akışını UDP üzerinden belirli şeyler atar"
+(*Bu bilgiler Gstreamerdan alınmıştır )
+Bu şekilde olup çalışmıyorsa bilgisayarınızdan ayarladığınız-- kamera izin-- kısmına bakabilirsiniz 
+
+
+
+
+Gstreamer kullanarak kamera hörüntüsü elde ettiğimizi düşünüyorum bu yüzden diğer adıma geçiyoruz bu görüntüyü OpenCV VideoCaptur kullanabiliriz
+
+Bu kod 2024 yılında kullanılan şahsım tarafından yapılan # Window # Arayüz kodunda kullanılmıştır bu kodda oradan alıntıdır
+"""
+import cv2
+...
+....
+...
+gst_pipeline = (
+    "udpsrc port=5000 ! application/x-rtp, encoding-name=H264, payload=96 ! "
+    "rtph264depay ! avdec_h264 ! videoconvert ! appsink"
+)
+
+
+cap = cv2.VideoCapture(gst_pipeline, cv2.CAP_GSTREAMER)
+if not cap.isOpened():
+    print(" video suretinizden mütevellit açılmayı reddi ilfak etmiştir açılmıyo ")
+
+"""
+Bu kodda bulunan bazı kodların açıklamaları 
+olarak bunları örnek verip açıklıyacağım
+
+udpsrc: UDP portundan veri yani görüntğ alır.
+
+videoconvert: Videoyu OpenCV'nin çalıştırması  için uygun formata. dönüştürür.
+appsink: OpenCV'nin görüntü almasını ve açılmasını  sağlar.
+
+OpenCV DNN Modülü ile Nesne Algılama (-(Yolo4)-)
+Yolo4 kurulması
+YOLOv4 dokümantasyonu indirilmesi
+net = cv2.dnn.readNet('yolov4.weights', 'yolov4.cfg')
+
+# COCO 
+with open("coco.names", "r") as f:
+    classes = [line.strip() for line in f.readlines()]
+
+YOLOv4'ü GPU'da çalıştırmak için bir seçenektir fakat bu seçenek pek kullanıma uygun değildir şahsi olarak ise gpu ya başka bir işlem yaptırılmıcaksa kullanılabilir net.setPreferableBackend(cv2.dnn.DNN_BACKEND_CUDA) net.setPreferableTarget(cv2.dnn.DNN_TARGET_CUDA)
+Kodlar çeşitli forumlardan Yolo4 indirilmsi için alınmıştır ve eklemeler yapılmıştır
+
+
+Nesne Algılama 
+Görüntüye Dnn modeli vericeğiz sonrada nesneleri algılatıcaz Bunun için ufak bir kod denemesinde bulundum önce sizlere bu kodu verip sonrada gerekli açıklamaları yapacamğım ::
+def detect_objects(frame):
+    height, width = frame.shape[:2]
+    blob = cv2.dnn.blobFromImage(frame, 1/255.0, (416, 416), swapRB=True, crop=False)
+    net.setInput(blob)
+  
+    layer_names = net.getLayerNames()
+    output_layers = [layer_names[i[0] - 1] for i in net.getUnconnectedOutLayers()]
+
+   
+    boxes, confidences, class_ids = [], [], []
+   
+    for output in outputs:
+        for detection in output:
+            scores = detection[5:]
+            class_id = np.argmax(scores)
+            confidence = scores[class_id]
+            
+            if confidence > 0.5:  
+                center_x = int(detection[0] * width)
+                center_y = int(detection[1] * height)
+                w = int(detection[2] * width)
+                h = int(detection[3] * height)
+                
+                x = int(center_x - w / 2)
+                y = int(center_y - h / 2)
+                
+                boxes.append([x, y, w, h])
+                confidences.append(float(confidence))
+                class_ids.append(class_id)
+    
+    
+    indices = cv2.dnn.NMSBoxes(boxes, confidences, 0.5, 0.4)
+    
+    for i in indices:
+        i = i[0]
+        box = boxes[i]
+        x, y, w, u = box[0], box[1], box[2], box[3]
+        
+        
+        color = (0, 255, 0)  # Yeşil renk
+        cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
+        text = f"{classes[class_ids[i]]}: {confidences[i]:.2f}"
+        cv2.putText(frame, text, (x, y - 5), cv2.FONT_SIMPLEX, 0.5, color, 2)
+        
+        
+        logging.info(f"Detected: {classes[class_ids[i]]} with confidence: {confidences[i]:.2f}")
+
+(Bu kod yolo4 OpenCV içerir şahsın tarafından bu belgenin açıklandığı zaman yazılmıştır)
+
+Açıklama:
+Modelin görüntüsünden  nesneleri tespit eder ve algılar.
+Belirli büyüklüğü ve yakınlığı geçen nesneleri kutu kullanarak çerçeveler
+Bu kutuları görüntü üzerine çizer ve  isimlerini ekler ve renklendirir .
+Terminalde kutuları ve açıklamaları log olarak çıkarır.
+
+Olası hatalar olarak Yolo modülünün düzgün yüklenmemesi Gpu kullanımının ayrıştırılması olarak ekleyebilirim bu konulara dikkat edelim.
+
+HSV Filtresi ile Renk filtreleme
+
+Görüntüye HSV renk filtresi uygulamak için önce görüntüyü HSV renk paletine çevireceğiz ve ardından belirli renklere aralığına göre filtreleme yapalım.
+
+Renk filtresi uygulamak istediğiniz aralığı belirlemek için örnek olarak herhangi bir rengi alabiliriz ben  kırmızı rengini seçtim. HSV renk paletinee kırmızı renk için iki farklı aralık vardır(Hsv renk araştırması sonucu) çünkü kırmızı 360 derece renkte hem en yüksek hem de en düşük açılarda bulunur. İki ayrı aralıkta kırmızı rengi filtreleçeğiz ve ardından bu iki filtreyi birleştireceğiz
+Öncelikle Hsv konusunda araştırmalar yapıp bu dökümqntasyon için yaptığım koda geçelim.
+.def apply_hsv_filter(frame):
+    hsv_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+  
+    lower_red1 = np.array([0, 120, 70])
+    upper_red1 = np.array([10, 255, 255])
+    mask1 = cv2.inRange(hsv_frame, lower_red1, upper_red1)
+    
+    lower_red2 = np.array([170, 120, 70])
+    upper_red2 = np.array([180, 255, 255])
+    mask2 = cv2.inRange(hsv_frame, lower_red2, upper_red2)
+    
+    red_mask = cv2.bitwise_or(mask1, mask2)
+
+    filtered_frame = cv2.bitwise_and(frame, frame, mask=red_mask)
+
+Bu kod konusunda emin değilim bu kod telefondan çok fazla kontrol olmadan yazılmıştır. Kontrol etmenizi öneririm
+    
+
+HSV Dönüşümü: İlk adımda, BGR formatındaki görüntüyü HSV formatına çevirir.
+Kırmızı Renk filtresi: Kırmızı rengin iki farklı aralığını maskeleyecek iki farklı maske oluşturur.
+Filtrelerin Birleştirilmesi:
+Bu iki maskeyi birleştirir ve tek bir kırmızı renk maskesi elde eder.
+Filtreleme Uygulaması
+: Son olarak, bu filtreyi kullanarak sadece kırmızı renklerin göründüğü bir görüntü elde eder.
+
+
+Olası Hatalar
+Yavaş Performans: 
+Eğer FPS çok düşükse, model işlemesi veya video yakalama işlemi CPU tarafından yapılıyor olabilir. Bu durumda, GPU hızlandırması uygulamayı hızlandırabilir. Bundan dolayı hata çözülebilir
+
+Görüntüde Bozulmalar: Eğer görüntüde bozulmalar görüyorsanız, GStreamerdeki video ayarlarını (bitrate,speed-preset, .) optimize edebilirsiniz.
+Bu dökümantasyında Gstreamer kullanarak kameradan görüntü alma Yolo4 modülü ile onu işlemek ve HSV renk filtresinden geçirdik umarım yararlı olmuştur 
+Akif Emre Daştan
