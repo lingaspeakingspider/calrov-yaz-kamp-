@@ -1,0 +1,100 @@
+.Merhabalar;
+Bu gün MAVlink ile yaptığımız klavye kontrolü ile eş zamanda arka planda bir 
+PID sisteminin dökümantasyonunu hazırlıyacağız bu PID sistemi Roll,pitch,yaw
+ve z eksenleri için yapılacak 
+
+!!!PID NEDİR
+
+Öncelikle  PID'nin tanımına bakalım PID (Proportional-Integral-Derivative) demektir.
+İsiminden sonrada ana tanımına biraz bakalım :
+	  PID   oransal-integral-türevsel denetleyici kontrol döngüsü yöntemi, endüstriyel kontrol sistemlerinde sık olarak kullanılan bir geri denetleme denetleyicisi yöntemidir. Bir PID denetleyici sürekli olarak bir hata değerini, yani amaçlanan sistem durumu ile mevcut sistem durumu arasındaki farkı hesaplar. Denetleyici süreçte kontrol girdisini ayarlayarak hatayı en aza indirmeye çalışır. 
+Bu açıklama biraz daha işin teknik kısmında kalsada ben genede açıklamak istedim
+		PID Algoritması hatayı sıfıra indirmek için üç tane ayrı parametredeki sabit değeri takib eder . Oransal (P)  İntegral (I) Türevsel (D) Daha basitçe ise şöyle bir açıklama yapabilirim;
+	 P mevcut hataya bağlıdır, I geçmiş hataların toplamı ve D gelecekteki hataların bir tahminidir. Sistem, bu üç eylemin ağırlıklı toplamı yoluyla kontrol edilerek istenen duruma getirilir.
+Peki bunu yazılımda nasıl kullanıcağız  ama önce son bir defa MAVlink kısmına bakmak istiyorum 
+
+MAVLink (Micro Air Vehicle Link), insansız hava araçları  ve robotik sistemler için stabil ve  güçlü bir haberleşme protokolüdür. MAVLink ile çalışan bir klavye kontrolü, genellikle kullanıcı iletilerini (örneğin, klavyedeki tuşlara basılması ) kullanarak Deniz aracı veya benzeri bir aracın hareketlerinde kontrol sağlar .
+
+Basitçe mevcut sisteminizde klavye girdileri yani basılan tuşlar, MAVLink iletileri aracılığıyla aracın roll, pitch, yaw ve z eksenlerinde  hareket etmesine olanak tanıyor
+
+                                %%% PID %%%
+Biz PID kullanarak  roll, pitch, yaw ve z eksenlerindeki hataları düzelticeğiz ve daha stabil bir hale getiricez
+
+
+PID Kontrolünün Roll, Pitch, Yaw ve Z Eksenlerine Uygulanması*
+
+Her bir eksen (roll , pitch, yaw ve z) için bir PID kontrol döngüsü kurulacak ve her bir eksen bir diğerinden bağımsız olarak kontrol edilecek. Bu sistem sayesinde arka planda çalışan PID kontrol sistemi, aracın bu eksenlerde stabil olmasını sağlayacak.
+
+Roll ve Pitch Eksenleri
+ Roll ve Pitch: Aracın sağa-sola ve ileri-geri eğilmesini kontrol eder. PID kontrol sistemi, aracın yatay yöndeki  stabilitesini sağlayacak. Bu sayede olabilecek hatalardan bilgimiz olucak ve sistemimiz daha stabil hale gelicek
+
+ Yaw Eksen
+ Yaw: Aracın sağa veya sola dönmesini kontrol eder. PID kontrol sistemi, aracın bulunduğu tarafı ve istediği tarafa dönüş sağlaması için hatasız ve stabil hale getirecek.
+
+ Z Ekseni
+ Z: Aracın yükselme veya alçalma hareketini kontrol eder. PID kontrol sistemi, hedef yükseklikte kalmayı sağlayacak.
+
+
+ PID Parametrelerinin Ayarlanması
+
+Her bir PID kontrolörün parametreleri (Kp, Ki, Kd şeklinde )  bir şekilde ayarlanmalıdır. Bu parametreler, aracın dinamiklerine veya kontrol ihtiyaçlarına göre değişebilir. Deneme-yanılma yöntemi ile veya belirli bir modelleme ve simülasyon kullanarak bu parametreler ayarlayacağız.
+
+ PID Kontrol Döngüsü
+Bu döngüyü şu şekilde yazılı halde belirtebiliriz
+PID kontrol döngüsü, her bir taraf ve eksen  için aşağıdaki adımları takip eder:
+1.Hata Hesaplama: Hedef ve gerçek değerler arasındaki fark (hata) hesaplanır.
+2. P, I, D Bileşenlerinin Hesaplanması*: Bu hata, PID formülüne uygulanarak kontrol sinyalleri hesaplanır.
+3. MAVLink İleti Gönderme: Hesaplanan kontrol sinyalleri, MAVLink mesajı olarak gönderilir.
+4. Güncelleme: Sistem periyodik olarak bu döngüyü tekrar eder.
+
+ MAVLink ile PID Kontrol Entegrasyonu
+
+PID kontrol sistemi, mevcut klavye kontrol sistemine ek olarak arka planda sürekli çalışacak şekilde entegre etmeliyiz. Bu klavyeden alınan komutlara ek olarak, aracın stabilitesini koruyan bir kod katman olarak görev yapacak bunun için dikkatli bir biçimde PID ve MAVlink kodumuzu olabildiğince stabilize etmemiz gerek.
+
+ PID Kontrolünü Entegre Etme Adımları
+
+1.PID Parametrelerinin Tanımlanması: Her eksen için uygun Kp, Ki, Kd değerlerini tanımlayalım.
+2. PID Algoritmasını Uygulama: Roll, pitch, yaw ve z eksenleri için PID algoritmasını uygulayalım
+3. PID Çıkışlarını MAVLink Mesajına Dönüştürme: PID algoritmasından elde edilen sonuçları MAVLink mesajlarına dönüştürün.
+4.Arka Plan Döngüsü: PID kontrol döngüsü, arka planda sürekli çalışacak şekilde yani bir sınırsız döngüde yapılandırılmalıdır.
+
+ Örnek Kod
+
+Aşağıda, roll ekseni için basit bir PID kontrol döngüsü örneği verilmiştir:
+
+"""
+ """PID Parametreleri Belirleyelim"""
+Kp = 1.0
+Ki = 0.01
+Kd = 0.5
+
+# PID Değişkenlerini yazalım
+previous_error = 0
+integral = 0
+
+def pid_control(target_roll, current_roll):
+    global previous_error, integral
+
+     Hata hesaplama
+    error = target_roll - current_roll
+    
+    P, I, D hesaplama
+    proportional = Kp * error
+    integral += Ki * error
+    derivative = Kd * (error - previous_error)
+    
+    Toplam PID çıkışı
+    output = proportional + integral + derivative
+    
+    Önceki hataları güncelle
+    previous_error = error
+    
+    return output
+"""
+bu kod şahsım tarafından ardusub ve softivation sitelerinden bilgi alınarak yazılmıştır
+
+Bu fonksiyon, target_roll ve current_roll girdilerini alarak, gerekli düzeltme sinyalini hesaplar. Bu çıkış değeri, MAVLink aracılığıyla Deniz aracına  gönderir ve bu sayede hatalardan minumum şekilde kayıb yaşıyacağız ve ilerdeki hatalara karşı savunmamız olacak ve önceden görebileceğiz.
+
+Sonuç
+
+Bu dokümanda, MAVLink ile çalışan klavye kontrolü sisteminize PID hata ayıklama ve kontrol sistemi eklemenin adımları açıklanmıştır. PID kontrol sistemi, aracın roll, pitch, yaw ve z eksenlerinde hataları ayıklama ve  stabilitesinin artmasını sağlar ve bu aracın manuel kontrolün daha güvenli ve hassas hale gelmesine sağlar.
